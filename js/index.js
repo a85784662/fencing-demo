@@ -1,4 +1,6 @@
-let editMode = false //判断是不是编辑模式
+let editMode = false; //判断是不是编辑模式
+let OPENEDIT = false;
+let INITTARGS = [];
 //关闭小图标的BASE64编码
 var closeIcon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABS0lEQVQ4jZWTMUsDQRCFV7CxEQvtLCz9WwqCNlZiE4UF572QYgMihHCEFLG4QpYrUlisP0IU7ATBMqWFxeVubNxgNrmoA1Ps7nxvd2ZnjEms0+nsisgFgALAO4AJyTHJK5L7afzMVHWN5AnJRwDa4K8icm6t3VwQIHmzApxzkuMUPgBQOue03+83gqPRSHu9XhQ5M8YYY63d+s5VsyzTsizVe78Ae++1qirN8zzufbTb7T0D4DANTEUiHEJIhS8NSbfstiiyAlYAuSF5vyxf771Op1Ot67oJVhF5MgAelh0WRaF1XWtVVVoURVNhX4yIXKcHIQRVVQ0h/JbCnSF51AT/oYjWWGu3AUzis1M4FRkOh3Hvc9baInIMQAeDwc9/XvAsy9Q5F9etuW4EcPuPVg7W2vU5gW63uyEipwCeV8BvAFokdxqn8r/j/AW6rUJCBPyi3gAAAABJRU5ErkJggg=="
 
@@ -113,8 +115,9 @@ let rightClickFunc = (e,editData) => {
     var wlcolor = (editData && editData.color)  || 0xb966ff;
     // right click to finish
     if(editData){
-        var  points = editData.points
+        var  points = editData.points;
     }else{
+        console.log('rrrrrr');
         var points = finalDataObjects.points //所有左键点击后生成绘制点的坐标系
     }
 
@@ -145,6 +148,8 @@ let rightClickFunc = (e,editData) => {
             // textOptions: textOptions,
             labelsVisible: false
         });
+
+        
 
         polygon.interactable = true  //允许交互
         polygon.on('click',(e) => {
@@ -186,9 +191,38 @@ let rightClickFunc = (e,editData) => {
         //把每一个生成的围栏对象和对应的所有可拖动标签保存进全局数组里面
         globalGuiSettings[polygonName] = {
             polygon: polygon,
-            tags: tags
+            tags: tags,
         };
+        /////
+            //如果服务器有传值过来就用服务器传的标签名字，如果没有传值，就用系统默认生成的
+            curTagname = (editData && editData.textTag)  || polygonName;
+            //获取中心点
+            var centerPoints = getCenterPoint(boundary)
+            //添加文字标签
+            let textTag = new altizure.TextTagMarker({
+                    // text string
+                    text: curTagname,
+                    // text style
+                    textStyle: {
+                        fillStyle: 'rgb(255, 255, 255)',
+                        font: '500 40px Arial',
+                        outlineWidth: 0.1,
+                        outlineStyle: 'rgb(0, 0, 0)'
+                    },
 
+                    // icon position
+                    position: {
+                        "lng": centerPoints.lng,
+                        "lat": centerPoints.lat,
+                        "alt": 200
+                    },
+                    // scene
+                    sandbox: sandbox,
+                    scale: 6 // icon size
+                });
+            /////
+            globalGuiSettings[polygonName].textTag = textTag;
+            INITTARGS.push(textTag)
         tags.map((tag) => {
             tag.interactable = true //允许标签可以拖动
             //每个标签的拖动事件
@@ -258,7 +292,7 @@ sandbox.renderer.domElement.addEventListener('mouseup', (e) => {
         if (e.button === 0) {
             leftClickFunc(e)
         } else if (e.button === 2) {
-            rightClickFunc(e)
+            rightClickFunc(e,null)
         }
     }
 })
@@ -281,29 +315,36 @@ $('.dg').hide();
 ///每创建一个围栏对应生成一个GUI控件菜单的总体方法/////////////////////////
 function addPolygon(name) {
     let polygonFolder = gui.addFolder(name)
-    let polygonSettings = {  //创建gui控件对象变量
+    let polygonSettings = {  //创建gui控件对象变量 
+        "项目名称":globalGuiSettings[name].textTag.text, //获取初始显示值（以下同）
         "围栏高度": globalGuiSettings[name].polygon.fenceHeight,
-        //bottom: globalGuiSettings[name].polygon.bottom,
         "颜色": globalGuiSettings[name].polygon.color,
         "透明度": globalGuiSettings[name].polygon.opacity,
         "删除": () => {
             var nameIndex = allPolygonNameArry.indexOf(name);
             allPolygonNameArry.splice(nameIndex,1); //删除当前页面所有围栏对象数组中要删除的对应的围栏对象名字
             gui.removeFolder(name)
-            globalGuiSettings[name].polygon.destruct()
+            globalGuiSettings[name].textTag.destruct();
+
+            globalGuiSettings[name].polygon.destruct();
             globalGuiSettings[name].tags.map((tag) => {
                 tag.destruct()
             })
             delete globalGuiSettings[name]
         }
-    }
+    };
+
+    addEntry(polygonFolder, polygonSettings,'项目名称','string', null, null, null, (v) => {
+        globalGuiSettings[name].textTag.text = v;
+    })
     addEntry(polygonFolder, polygonSettings, '围栏高度', 'number', 0, 300, 1, (v) => {
-        polygonSettings.fenceHeight = v
+        //polygonSettings.fenceHeight = v
+        console.log(11111);
         globalGuiSettings[name].polygon.fenceHeight = v
     })
 
     addEntry(polygonFolder, polygonSettings, '颜色', 'color', 0, 300, 1, (v) => {
-        polygonSettings.color = v
+        //polygonSettings.color = v
         globalGuiSettings[name].polygon.color = colorInt(v)
         function colorInt(v) {
             let c = v
@@ -312,21 +353,22 @@ function addPolygon(name) {
         }
     })
     addEntry(polygonFolder, polygonSettings, '透明度', 'number', 0, 1, 0.05, (v) => {
-        polygonSettings.opacity = v
+        //polygonSettings.opacity = v
         globalGuiSettings[name].polygon.opacity = v
     })
+
     addEntry(polygonFolder, polygonSettings, '删除')
 }
 
 //生成一个GUI功能子菜单的子方法
 function addEntry(folder, settings, key, type, low, high, interval, onChangeFunc) {
-    //参数onChangeFunc为GUI空间改变后要执行的方法
+    //参数onChangeFunc为GUI控件改变后要执行的方法
     if (type === 'number') {
         folder.add(settings, key, low, high, interval).onChange(onChangeFunc)
     } else if (type === 'color') {
         folder.addColor(settings, key).onChange(onChangeFunc)
     } else {
-        folder.add(settings, key)
+        folder.add(settings, key).onChange(onChangeFunc)
     }
     folder.open()
 }
@@ -363,6 +405,7 @@ $('.tyl-btn-wrap').click(function(){
         $(this).text('编辑');
         globalPointsArry = []; //用来保存所有围栏的坐标体系，传送给后台使用
 
+        //根据名字销毁所有每个名字对应的可拖动图标
         allPolygonNameArry.forEach(function(name){
             if(globalGuiSettings[name].tags){
 
@@ -373,11 +416,13 @@ $('.tyl-btn-wrap').click(function(){
             }       
         });
 
+        //根据围栏对象名字保存每个名字所对应的要传给后台的信息
         allPolygonNameArry.forEach(function(item){
             var eleMsg = {};
-            eleMsg.color = globalGuiSettings[item].polygon.color;
-            eleMsg.points = globalGuiSettings[item].polygon.points;
-            globalPointsArry.push(eleMsg)
+            eleMsg.color = globalGuiSettings[item].polygon.color; //颜色信息
+            eleMsg.points = globalGuiSettings[item].polygon.points; // 坐标信息
+            eleMsg.textTag = globalGuiSettings[item].textTag.text; // 标签文字信息
+            globalPointsArry.push(eleMsg);
         });
         //向服务端发起保存数据的请求，globalPointsArry是要传给服务端保存的数据集
         var globalPointsArry = JSON.stringify(globalPointsArry)
@@ -398,6 +443,19 @@ $('.tyl-btn-wrap').click(function(){
     }else{
 
         //点击编辑执行的方法开始//////////////
+
+        //首先销毁所有页面初始化生成的文字标签对象
+        if(INITTARGS.length>0){
+            for(var j=0;j<INITTARGS.length;j++){
+                console.log(INITTARGS[j]);
+                if(INITTARGS[j]._parent){
+                    INITTARGS[j].destruct();
+                }
+                
+            };
+            //存放文字标签的数组容器也要清空
+            INITTARGS = []
+        };
 
         editMode = true //开启编辑模式
         $('.dg').show();//让GUI菜单框显示出来
@@ -441,6 +499,9 @@ $('.tyl-btn-wrap').click(function(){
     }
 });
 
+
+
+
 //页面首次加载从服务端获取初始围栏数据////////////////////////////
 $.ajax({
         url: '/api/data/box',
@@ -471,9 +532,37 @@ $.ajax({
             polygon.interactable = true  //允许交互
             polygon.on('click',(e) => {
                 thisArea = computeSignedArea(item.points)
-                thisArea = thisArea.toFixed(2)
+                thisArea = thisArea.toFixed(2);
                 addAreaAlert(thisArea,closeIcon,'.tyl-close-icon');
-            })
+            });
+            /////
+            //获取多边形的中心点
+            var centerPoints = getCenterPoint(item.points);
+            curTagname = item.textTag  || polygonName;
+            let textTag = new altizure.TextTagMarker({
+                    // text string
+                    text: curTagname,
+                    // text style
+                    textStyle: {
+                        fillStyle: 'rgb(255, 255, 255)',
+                        font: '500 40px Arial',
+                        outlineWidth: 0.1,
+                        outlineStyle: 'rgb(0, 0, 0)'
+                    },
+
+                    // icon position
+                    position: {
+                        "lng": centerPoints.lng,
+                        "lat": centerPoints.lat,
+                        "alt": 200
+                    },
+                    // scene
+                    sandbox: sandbox,
+                    scale: 6 // icon size
+                })
+            console.log(textTag);
+            INITTARGS.push(textTag);
+            /////
         })         
         console.log("success");
     })
@@ -482,7 +571,7 @@ $.ajax({
     })
 /////////////////////////////////////////////////////////////////
 
-//js根据经纬度计算多边形面积
+//js根据经纬度计算多边形面积方法
 function computeSignedArea(path) {
     let radius= 6371009
     let len = path.length;
@@ -532,6 +621,90 @@ function addTipsEle(type,text){
     $('.tyl-tips').fadeOut().remove(); 
   }, 1000);
 };
+
+//////////测试///////////////////////////////////
+
+/*let textTag = new altizure.TextTagMarker({
+    // text string
+    text: '空中花园',
+    // text style
+    textStyle: {
+        fillStyle: 'rgb(255, 255, 255)',
+        font: '500 40px Arial',
+        outlineWidth: 0.1,
+        outlineStyle: 'rgb(0, 0, 0)'
+    },
+
+    // icon position
+    position: {
+        "lng": 119.01113491518255,
+        "lat": 32.07815798409728,
+        "alt": 200
+    },
+    // scene
+    sandbox: sandbox,
+    scale: 6 // icon size
+})*/
+
+
+
+
+//通过经纬度获取多边形的中心点
+function getCenterPoint(path) {
+  //var path =e.;//Array<Point> 返回多边型的点数组
+  //var ret=parseFloat(num1)+parseFloat(num2);
+  var x = 0.0;
+  var y = 0.0;
+  for (var i = 0; i < path.length; i++) {
+    x = x + parseFloat(path[i].lng);
+    y = y + parseFloat(path[i].lat);
+  }
+  x = x / path.length;
+  y = y / path.length;
+
+  //return new BMap.Point(path[0].lng,path[0].lat);
+  return {"lng":x,"lat":y}
+  //return path[0];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
